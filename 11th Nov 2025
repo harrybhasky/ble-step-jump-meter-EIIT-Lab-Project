@@ -1,0 +1,68 @@
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include <BluetoothSerial.h> // Example library for Bluetooth Serial
+
+BluetoothSerial SerialBT;
+Adafruit_MPU6050 mpu;
+float thresholdL = 12.50; // Example threshold, will need calibration (around 1G or 9.8 m/s^2)
+float thresholdH = 17.5;
+int stepCount = 0;
+int jumpCount = 0;
+bool stepDetected = false;
+unsigned long lastStepTime = 0;
+const unsigned long stepDelay = 300; // Minimum time between steps in ms
+const unsigned long jumpDelay = 650;
+void setup() {
+  Serial.begin(115200);
+  SerialBT.begin("harii"); // Name your Bluetooth device
+
+  // Initialize MPU6050
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) { delay(10); }
+  }
+  // Configure sensor settings
+}
+
+void loop() {
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // Implement your step detection algorithm here.
+  // This will involve analyzing a.acceleration.x, a.acceleration.y, a.acceleration.z
+  float totalAcceleration = sqrt(a.acceleration.x * a.acceleration.x + 
+                                 a.acceleration.y * a.acceleration.y + 
+                                 a.acceleration.z * a.acceleration.z);
+
+  unsigned long currentTime = millis();
+  // When a step is detected:
+  // stepCount++;
+  if (totalAcceleration > thresholdL) {
+    if (!stepDetected && (currentTime - lastStepTime > stepDelay)) {
+      if(totalAcceleration < thresholdH){
+        stepCount++;
+      }
+      else if(totalAcceleration >= thresholdH){
+        if (!stepDetected && (currentTime - lastStepTime > jumpDelay)){
+          jumpCount++;
+        }
+      }
+      stepDetected = true;
+      lastStepTime = currentTime;
+      Serial.print("Steps: ");
+      Serial.println(stepCount);
+      Serial.print("Jumps: ");
+      Serial.println(jumpCount/2);
+    }
+  } else {
+    stepDetected = false;
+  }
+  
+  // Send step count over Bluetooth (as a string for simplicity)
+  String steps = "Steps: " + String(stepCount);
+  SerialBT.println(steps); // Sends data to connected Bluetooth device
+  String jumps = "Jumps: " + String(jumpCount);
+  SerialBT.println(jumps); 
+  delay(100); // Adjust delay based on sampling rate of algorithm
+}
